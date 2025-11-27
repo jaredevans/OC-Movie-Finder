@@ -2,6 +2,10 @@
 
 A small web app for quickly finding Open Caption (OC) movie showtimes. The app scrapes nearby AMC and Regal theater listings, stores the results in SQLite, and exposes a simple React UI to search and browse screenings.
 
+<img src="https://i.imgur.com/npd0uUQ.png">
+
+<img src="https://i.imgur.com/VMDKhsA.png">
+
 ## Features
 - Searchable list of Open Caption screenings with date/time and theater details (search by title only or `title city`)
 - One-click "Get Tickets" links back to the theater listing
