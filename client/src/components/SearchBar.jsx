@@ -10,7 +10,7 @@ const SearchBar = ({ value, onChange }) => {
                 </svg>
                 <input
                     type="text"
-                    placeholder="Search movies, theaters, or cities..."
+                    placeholder="Search: [movie] [city]"
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     className="search-input"

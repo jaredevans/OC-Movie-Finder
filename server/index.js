@@ -17,9 +17,20 @@ app.get('/api/movies', (req, res) => {
     let params = [];
 
     if (q) {
-        sql += " WHERE title LIKE ? OR theater_name LIKE ? OR theater_city LIKE ?";
-        const searchTerm = `%${q}%`;
-        params = [searchTerm, searchTerm, searchTerm];
+        // Split search query by spaces
+        const searchTerms = q.trim().split(/\s+/);
+        const firstWord = searchTerms[0];
+        const secondWord = searchTerms[1];
+
+        if (firstWord && secondWord) {
+            // First word = movie title, second word = city
+            sql += " WHERE title LIKE ? AND theater_city LIKE ?";
+            params = [`%${firstWord}%`, `%${secondWord}%`];
+        } else if (firstWord) {
+            // Only first word provided = search movie title only
+            sql += " WHERE title LIKE ?";
+            params = [`%${firstWord}%`];
+        }
     }
 
     // Order by date
