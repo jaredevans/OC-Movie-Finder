@@ -27,8 +27,8 @@ async function main() {
 
   await page.setUserAgent(
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/122.0.0.0 Safari/537.36'
+    'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/122.0.0.0 Safari/537.36'
   );
 
   await page.setExtraHTTPHeaders({
@@ -37,85 +37,60 @@ async function main() {
       'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   });
 
-  page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
+  // page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
 
   try {
     console.log('\nNavigating to Regal showtimes page...');
-    // Regal pages are heavy; wait for network idle
-    await page.goto(TARGET_URL, { waitUntil: 'networkidle0', timeout: 60000 });
+    // Just load the page to establish session for API call
+    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // Scroll to bottom to trigger lazy loading (same pattern as scraper.js)
-    await page.evaluate(async () => {
-      await new Promise((resolve) => {
-        let totalHeight = 0;
-        const distance = 100;
-        const timer = setInterval(() => {
-          const scrollHeight = document.body.scrollHeight;
-          window.scrollBy(0, distance);
-          totalHeight += distance;
-
-          if (totalHeight >= scrollHeight - window.innerHeight) {
-            clearInterval(timer);
-            resolve();
-          }
-        }, 100);
-      });
+    console.log('Fetching data from API...');
+    const apiData = await page.evaluate(async () => {
+      try {
+        const response = await fetch('https://www.regmovies.com/api/getShowtimes?theatres=0336&date=11-29-2025&hoCode=&ignoreCache=false&moviesOnly=false');
+        if (!response.ok) return { error: response.statusText };
+        return await response.json();
+      } catch (e) {
+        return { error: e.toString() };
+      }
     });
 
-    // Small extra wait for any remaining lazy-loaded content
-    await new Promise((r) => setTimeout(r, 2000));
+    if (apiData.error) {
+      console.error('API Error:', apiData.error);
+      return;
+    }
 
-    const movies = await page.evaluate((pageUrl) => {
-      const results = [];
+    const movies = [];
+    if (apiData && apiData.shows && apiData.shows.length > 0) {
+      const films = apiData.shows[0].Film;
+      if (films && Array.isArray(films)) {
+        films.forEach(movie => {
+          const title = movie.Title.replace(/\(Open Cap\/Eng Sub\)/i, '').trim();
+          if (movie.Performances) {
+            movie.Performances.forEach(perf => {
+              if (perf.PerformanceAttributes && perf.PerformanceAttributes.includes('OC')) {
+                // Extract time from CalendarShowTime (e.g., "2025-11-29T09:15:00")
+                const timeMatch = perf.CalendarShowTime.match(/T(\d{2}):(\d{2})/);
+                if (timeMatch) {
+                  let hours = parseInt(timeMatch[1], 10);
+                  const minutes = timeMatch[2];
+                  const modifier = hours >= 12 ? 'pm' : 'am';
+                  if (hours > 12) hours -= 12;
+                  if (hours === 0) hours = 12;
+                  const time = `${hours}:${minutes}${modifier}`;
 
-      // Regal scraping logic mirroring server/scraper.js
-      const containers = document.querySelectorAll('div[class*="e1hace1532"]');
-
-      containers.forEach((container) => {
-        const titleEl = container.querySelector('a[aria-label]');
-        if (!titleEl) return;
-
-        let title = titleEl.getAttribute('aria-label');
-        if (!title) return;
-
-        // Clean title (remove " (Open Cap/Eng Sub)")
-        title = title.replace(/\(Open Cap\/Eng Sub\)/i, '').trim();
-
-        // Look for the "Open Captioned" label within the container
-        const allDivs = Array.from(container.querySelectorAll('div'));
-        const openCapEl = allDivs.find((el) => el.innerText === 'Open Captioned');
-
-        if (openCapEl) {
-          // Try to find the row containing both the label and the showtime buttons
-          let formatRow = openCapEl.closest('div[class*="e1hace1540"]');
-          if (!formatRow) {
-            // Fallback traversal if class changed
-            formatRow = openCapEl.parentElement;
-            while (formatRow && !formatRow.querySelector('button')) {
-              formatRow = formatRow.parentElement;
-              if (formatRow === container) break;
-            }
-          }
-
-          if (formatRow) {
-            const buttons = formatRow.querySelectorAll('button');
-            buttons.forEach((btn) => {
-              const time = btn.innerText.trim();
-              // Validate time like "9:15am" / "9:15pm"
-              if (time.match(/\d{1,2}:\d{2}[ap]m/i)) {
-                results.push({
-                  title,
-                  showtime: time,
-                  url: pageUrl,
-                });
+                  movies.push({
+                    title,
+                    showtime: time,
+                    url: TARGET_URL
+                  });
+                }
               }
             });
           }
-        }
-      });
-
-      return results;
-    }, TARGET_URL);
+        });
+      }
+    }
 
     console.log(`\nFound ${movies.length} Open Caption showtimes on the page.\n`);
 
@@ -134,7 +109,7 @@ async function main() {
     if (movies.length !== EXPECTED_COUNT) {
       console.warn(
         `\n[Warning] Expected ${EXPECTED_COUNT} OC showtime, but found ${movies.length}. ` +
-          'This may mean the page layout, date, or showtimes have changed.'
+        'This may mean the page layout, date, or showtimes have changed.'
       );
     } else {
       console.log('\nSuccess: Found exactly 1 Open Caption showtime as expected.');

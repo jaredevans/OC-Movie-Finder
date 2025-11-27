@@ -27,8 +27,8 @@ async function main() {
 
   await page.setUserAgent(
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/122.0.0.0 Safari/537.36'
+    'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+    'Chrome/122.0.0.0 Safari/537.36'
   );
 
   await page.setExtraHTTPHeaders({
@@ -73,7 +73,7 @@ async function main() {
         );
 
         ocListItems.forEach((item) => {
-          const showtimeLinks = item.querySelectorAll('a.Showtime');
+          const showtimeLinks = item.querySelectorAll('a[href*="/showtimes/"]');
           showtimeLinks.forEach((link) => {
             const timeText = link.innerText.trim();
             results.push({
@@ -105,7 +105,7 @@ async function main() {
     if (movies.length !== EXPECTED_COUNT) {
       console.warn(
         `\n[Warning] Expected ${EXPECTED_COUNT} OC showtimes, but found ${movies.length}. ` +
-          'This may mean the page layout, date, or showtimes have changed.'
+        'This may mean the page layout, date, or showtimes have changed.'
       );
     } else {
       console.log('\nSuccess: Found exactly 4 Open Caption showtimes as expected.');

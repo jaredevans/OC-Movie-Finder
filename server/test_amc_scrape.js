@@ -4,6 +4,7 @@
 
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const db = require('./db');
 
 puppeteer.use(StealthPlugin());
 
@@ -68,7 +69,18 @@ async function main() {
 
   page.on('console', msg => console.log('PAGE LOG:', msg.text()));
 
+  let totalAdded = 0;
+
   try {
+    // Clear existing AMC movies from database
+    await new Promise((resolve, reject) => {
+      db.run("DELETE FROM movies WHERE theater_name LIKE 'AMC%'", (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    console.log('Cleared existing AMC movies from database.\n');
+
     for (const theater of theaters) {
       console.log(`\n===== ${theater.name} (${theater.city}, ${theater.state}) =====`);
 
@@ -105,7 +117,7 @@ async function main() {
               );
 
               ocListItems.forEach((item) => {
-                const showtimeLinks = item.querySelectorAll('a.Showtime');
+                const showtimeLinks = item.querySelectorAll('a[href*="/showtimes/"]');
                 showtimeLinks.forEach((link) => {
                   const timeText = link.innerText.trim();
                   results.push({
@@ -127,6 +139,29 @@ async function main() {
               console.log(
                 `  - ${movie.title} | ${movie.showtime} | ${movie.url}`
               );
+
+              // Parse time and insert into database
+              const timeMatch = movie.showtime.match(/(\d{1,2}):(\d{2})([ap]m)/i);
+              if (timeMatch) {
+                let [_, hours, minutes, modifier] = timeMatch;
+                hours = parseInt(hours, 10);
+                if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
+                if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+
+                const isoDateTime = `${dateStr}T${hours.toString().padStart(2, '0')}:${minutes}:00`;
+
+                await new Promise((resolve, reject) => {
+                  db.run(
+                    `INSERT INTO movies (title, theater_name, theater_city, theater_state, theater_zip, showtime, url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [movie.title, theater.name, theater.city, theater.state, theater.zip, isoDateTime, movie.url],
+                    (err) => {
+                      if (err) console.error('Error inserting movie:', err);
+                      resolve();
+                    }
+                  );
+                });
+                totalAdded++;
+              }
             }
           } else {
             console.log('  (No OC showtimes found for this date.)');
@@ -140,7 +175,7 @@ async function main() {
     console.error('Unexpected error in AMC test:', err);
   } finally {
     await browser.close();
-    console.log('\nAMC scrape test complete.');
+    console.log(`\nAMC scrape test complete. Added ${totalAdded} showtimes to database.`);
   }
 }
 

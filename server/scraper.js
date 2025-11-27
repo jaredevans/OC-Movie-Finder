@@ -52,6 +52,22 @@ async function scrapeMovies(onProgress = null) {
             state: 'MD',
             zip: '20850',
             type: 'regal'
+        },
+        {
+            name: 'Regal Majestic 20',
+            url: 'https://www.regmovies.com/theatres/regal-majestic-1862',
+            city: 'Silver Spring',
+            state: 'MD',
+            zip: '20910',
+            type: 'regal'
+        },
+        {
+            name: 'Regal Gallery Place 4DX',
+            url: 'https://www.regmovies.com/theatres/regal-gallery-place-4dx-1551',
+            city: 'Washington',
+            state: 'DC',
+            zip: '20001',
+            type: 'regal'
         }
     ];
 
@@ -90,10 +106,11 @@ async function scrapeMovies(onProgress = null) {
 
             for (const dateStr of dates) {
                 let url;
+                let regalDate;
                 if (theater.type === 'regal') {
                     // Regal uses MM-DD-YYYY
                     const [year, month, day] = dateStr.split('-');
-                    const regalDate = `${month}-${day}-${year}`;
+                    regalDate = `${month}-${day}-${year}`;
                     url = `${theater.url}?date=${regalDate}`;
                 } else {
                     // AMC uses YYYY-MM-DD
@@ -106,31 +123,11 @@ async function scrapeMovies(onProgress = null) {
                 }
 
                 try {
-                    // Use networkidle0 for Regal to ensure dynamic content loads
-                    const waitUntil = theater.type === 'regal' ? 'networkidle0' : 'domcontentloaded';
-                    await page.goto(url, { waitUntil, timeout: 60000 });
+                    // Use domcontentloaded for both - Regal will use API, AMC still needs basic page load
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-                    // Regal specific: scroll to bottom to trigger lazy loading
-                    if (theater.type === 'regal') {
-                        await page.evaluate(async () => {
-                            await new Promise((resolve) => {
-                                var totalHeight = 0;
-                                var distance = 100;
-                                var timer = setInterval(() => {
-                                    var scrollHeight = document.body.scrollHeight;
-                                    window.scrollBy(0, distance);
-                                    totalHeight += distance;
-
-                                    if (totalHeight >= scrollHeight - window.innerHeight) {
-                                        clearInterval(timer);
-                                        resolve();
-                                    }
-                                }, 100);
-                            });
-                        });
-                        await new Promise(r => setTimeout(r, 2000));
-                    } else {
-                        // AMC specific wait - restore original working logic
+                    if (theater.type === 'amc') {
+                        // AMC specific wait
                         try {
                             await page.waitForSelector('.ShowtimesByTheatre-film', { timeout: 5000 });
                         } catch (e) {
@@ -142,54 +139,53 @@ async function scrapeMovies(onProgress = null) {
                         }
                     }
 
-                    const movies = await page.evaluate((pageUrl, theaterType) => {
+                    const movies = await page.evaluate(async (pageUrl, theaterType, theaterCode, apiDate) => {
                         const results = [];
 
                         if (theaterType === 'regal') {
-                            // Regal Scraping Logic
-                            const containers = document.querySelectorAll('div[class*="e1hace1532"]');
+                            // Regal API-based scraping
+                            try {
+                                const apiUrl = `https://www.regmovies.com/api/getShowtimes?theatres=${theaterCode}&date=${apiDate}&hoCode=&ignoreCache=false&moviesOnly=false`;
+                                const response = await fetch(apiUrl);
+                                if (!response.ok) {
+                                    console.error('Regal API error:', response.status);
+                                    return results;
+                                }
+                                const apiData = await response.json();
 
-                            containers.forEach(container => {
-                                const titleEl = container.querySelector('a[aria-label]');
-                                if (!titleEl) return;
+                                if (apiData && apiData.shows && apiData.shows.length > 0) {
+                                    const films = apiData.shows[0].Film;
+                                    if (films && Array.isArray(films)) {
+                                        films.forEach(movie => {
+                                            const title = movie.Title.replace(/\(Open Cap\/Eng Sub\)/i, '').trim();
+                                            if (movie.Performances) {
+                                                movie.Performances.forEach(perf => {
+                                                    if (perf.PerformanceAttributes && perf.PerformanceAttributes.includes('OC')) {
+                                                        // Extract time from CalendarShowTime (e.g., "2025-11-29T09:15:00")
+                                                        const timeMatch = perf.CalendarShowTime.match(/T(\d{2}):(\d{2})/);
+                                                        if (timeMatch) {
+                                                            let hours = parseInt(timeMatch[1], 10);
+                                                            const minutes = timeMatch[2];
+                                                            const modifier = hours >= 12 ? 'pm' : 'am';
+                                                            if (hours > 12) hours -= 12;
+                                                            if (hours === 0) hours = 12;
+                                                            const time = `${hours}:${minutes}${modifier}`;
 
-                                let title = titleEl.getAttribute('aria-label');
-                                // Clean title (remove " (Open Cap/Eng Sub)")
-                                title = title.replace(/\(Open Cap\/Eng Sub\)/i, '').trim();
-
-                                // Find all format rows
-                                // We look for the "Open Captioned" text within the container
-                                const allDivs = Array.from(container.querySelectorAll('div'));
-                                const openCapEl = allDivs.find(el => el.innerText === 'Open Captioned');
-
-                                if (openCapEl) {
-                                    // Traverse up to find the row that contains both the label and the times
-                                    let formatRow = openCapEl.closest('div[class*="e1hace1540"]');
-                                    if (!formatRow) {
-                                        // Fallback traversal if class changes
-                                        formatRow = openCapEl.parentElement;
-                                        while (formatRow && !formatRow.querySelector('button')) {
-                                            formatRow = formatRow.parentElement;
-                                            if (formatRow === container) break; // Stop if we hit the main container
-                                        }
-                                    }
-
-                                    if (formatRow) {
-                                        const buttons = formatRow.querySelectorAll('button');
-                                        buttons.forEach(btn => {
-                                            const time = btn.innerText;
-                                            // Validate time format (e.g., 9:15am)
-                                            if (time.match(/\d{1,2}:\d{2}[ap]m/i)) {
-                                                results.push({
-                                                    title,
-                                                    showtime: time,
-                                                    url: pageUrl
+                                                            results.push({
+                                                                title,
+                                                                showtime: time,
+                                                                url: pageUrl
+                                                            });
+                                                        }
+                                                    }
                                                 });
                                             }
                                         });
                                     }
                                 }
-                            });
+                            } catch (e) {
+                                console.error('Error fetching Regal API:', e);
+                            }
 
                         } else {
                             // AMC Scraping Logic
@@ -203,7 +199,7 @@ async function scrapeMovies(onProgress = null) {
                                 const ocListItems = section.querySelectorAll('li[role="listitem"][aria-label*="Open Caption"]');
 
                                 ocListItems.forEach((item) => {
-                                    const showtimeLinks = item.querySelectorAll('a.Showtime');
+                                    const showtimeLinks = item.querySelectorAll('a[href*="/showtimes/"]');
                                     showtimeLinks.forEach((link) => {
                                         const timeText = link.innerText.trim();
                                         results.push({
@@ -217,7 +213,7 @@ async function scrapeMovies(onProgress = null) {
                         }
 
                         return results;
-                    }, url, theater.type);
+                    }, url, theater.type, theater.url.match(/regal-[^-]+-center-(\d+)/)?.[1] || '0336', regalDate);
 
                     console.log(`Found ${movies.length} movies for ${dateStr} at ${theater.name}`);
 
