@@ -1,0 +1,106 @@
+.movie-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    text-align: left;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+}
+
+.movie-card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+}
+
+.movie-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.movie-card:hover::before {
+    opacity: 1;
+}
+
+.movie-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.movie-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    color: #fff;
+    line-height: 1.2;
+}
+
+.movie-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--primary-color);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.movie-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.95rem;
+}
+
+.detail-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--secondary-color);
+}
+
+.location {
+    margin-left: 2rem;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.book-btn {
+    display: block;
+    width: 100%;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    text-align: center;
+}
+
+.book-btn:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #0f172a;
+}
