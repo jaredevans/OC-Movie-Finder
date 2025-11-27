@@ -13,7 +13,9 @@ const UpdatePage = () => {
     const theaters = [
         { name: 'AMC Montgomery 16', location: 'Bethesda, MD', chain: 'AMC' },
         { name: 'AMC Georgetown 14', location: 'Washington, DC', chain: 'AMC' },
-        { name: 'Regal Rockville Center', location: 'Rockville, MD', chain: 'Regal' }
+        { name: 'Regal Rockville Center', location: 'Rockville, MD', chain: 'Regal' },
+        { name: 'Regal Majestic 20', location: 'Silver Spring, MD', chain: 'Regal' },
+        { name: 'Regal Gallery Place 4DX', location: 'Washington, DC', chain: 'Regal' }
     ];
 
     const handleUpdate = async () => {
