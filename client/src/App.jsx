@@ -16,9 +16,10 @@ function Home() {
       setLoading(true);
       setError(null);
       try {
+        const apiBase = '/ocmovies/api';
         const url = searchTerm
-          ? `http://localhost:3001/api/movies?q=${encodeURIComponent(searchTerm)}`
-          : 'http://localhost:3001/api/movies';
+          ? `${apiBase}/movies?q=${encodeURIComponent(searchTerm)}`
+          : `${apiBase}/movies`;
 
         const response = await fetch(url);
         if (!response.ok) {
@@ -95,7 +96,7 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
+    <Router basename="/ocmovies">   {/* <-- add basename */}
       <AppContent />
     </Router>
   );

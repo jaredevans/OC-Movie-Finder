@@ -1,0 +1,28 @@
+    # Redirect bare /ocmovies to /ocmovies/
+    location = /ocmovies {
+        return 301 /ocmovies/;
+    }
+
+    # OC Movie Finder frontend (React build)
+    location /ocmovies/ {
+        alias /opt/homebrew/var/www/OC-Movie-Finder/client/dist/;
+        index index.html;
+        # With alias, /index.html here refers to /opt/homebrew/var/www/OC-Movie-Finder/client/dist/index.html
+        try_files $uri $uri/ /index.html;
+    }
+
+    # OC Movie Finder API (Node server on 127.0.0.1:3001)
+    location /ocmovies/api/ {
+        # Map /ocmovies/api/...  ->  /api/... on the Node server
+        proxy_pass http://127.0.0.1:3001/api/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Important for Server-Sent Events (/api/scrape)
+        proxy_buffering off;
+        proxy_cache     off;
+    }

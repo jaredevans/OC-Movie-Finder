@@ -26,7 +26,7 @@ const UpdatePage = () => {
         setMoviesFound(0);
 
         try {
-            const eventSource = new EventSource('http://localhost:3001/api/scrape', {
+            const eventSource = new EventSource('/ocmovies/api/scrape', {
                 withCredentials: false
             });
 
