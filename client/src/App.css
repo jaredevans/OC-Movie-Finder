@@ -61,6 +61,17 @@
   font-weight: 600;
 }
 
+.nav-link.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.nav-link.disabled:hover {
+  color: rgba(255, 255, 255, 0.6);
+  background: transparent;
+}
+
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

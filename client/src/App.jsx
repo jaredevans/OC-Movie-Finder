@@ -70,6 +70,13 @@ function Home() {
 
 function AppContent() {
   const location = useLocation();
+  const [searchClickCount, setSearchClickCount] = useState(0);
+
+  const handleSearchClick = () => {
+    setSearchClickCount(prev => prev + 1);
+  };
+
+  const isUpdateEnabled = searchClickCount >= 3;
 
   return (
     <div className="app-container">
@@ -80,8 +87,18 @@ function AppContent() {
             <p className="subtitle">Find Open Caption screenings near you</p>
           </div>
           <nav className="main-nav">
-            <Link to="/" className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}>Search</Link>
-            <Link to="/update" className={`nav-link ${location.pathname === '/update' ? 'active' : ''}`}>Update</Link>
+            <Link
+              to="/"
+              className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
+              onClick={handleSearchClick}
+            >
+              Search
+            </Link>
+            {isUpdateEnabled ? (
+              <Link to="/update" className={`nav-link ${location.pathname === '/update' ? 'active' : ''}`}>Update</Link>
+            ) : (
+              <span className="nav-link disabled" title="Click Search tab 3 times to unlock">Update</span>
+            )}
           </nav>
         </div>
       </header>
