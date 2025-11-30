@@ -8,7 +8,7 @@
     "server": "nodemon server/index.js",
     "client": "npm run dev --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "seed": "node server/seed.js"
+    "deploy": "node server/update_and_deploy.js"
   },
   "keywords": [],
   "author": "",

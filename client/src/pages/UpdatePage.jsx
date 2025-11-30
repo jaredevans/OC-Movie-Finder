@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './UpdatePage.css';
 
 const UpdatePage = () => {
@@ -9,6 +9,14 @@ const UpdatePage = () => {
     const [currentTheater, setCurrentTheater] = useState('');
     const [currentDate, setCurrentDate] = useState('');
     const [moviesFound, setMoviesFound] = useState(0);
+    const logContainerRef = useRef(null);
+
+    // Auto-scroll to bottom when new log entries are added
+    useEffect(() => {
+        if (logContainerRef.current) {
+            logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+        }
+    }, [progressLog]);
 
     const theaters = [
         { name: 'AMC Montgomery 16', location: 'Bethesda, MD', chain: 'AMC' },
@@ -132,7 +140,7 @@ const UpdatePage = () => {
                 {progressLog.length > 0 && (
                     <div className="progress-log">
                         <h3>Progress Log</h3>
-                        <div className="log-entries">
+                        <div className="log-entries" ref={logContainerRef}>
                             {progressLog.map((entry, index) => (
                                 <div key={index} className={`log-entry ${entry.type}`}>
                                     <span className="log-time">{entry.timestamp}</span>

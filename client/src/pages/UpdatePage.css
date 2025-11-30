@@ -154,6 +154,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 0.75rem;
     padding: 1rem;
+    scroll-behavior: smooth;
 }
 
 .log-entries::-webkit-scrollbar {
