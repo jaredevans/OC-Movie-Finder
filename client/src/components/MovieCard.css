@@ -104,3 +104,10 @@
     border-color: var(--primary-color);
     color: #0f172a;
 }
+
+.relative-time {
+    margin-left: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    font-weight: 500;
+}

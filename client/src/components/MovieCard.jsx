@@ -6,6 +6,23 @@ const MovieCard = ({ movie, index }) => {
     const formattedDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
+    const getRelativeTime = (date) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const movieDate = new Date(date);
+        movieDate.setHours(0, 0, 0, 0);
+
+        const diffTime = movieDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return '(Today)';
+        if (diffDays === 1) return '(Tomorrow)';
+        if (diffDays > 1) return `(in ${diffDays} days)`;
+        return '';
+    };
+
+    const relativeTime = getRelativeTime(date);
+
     return (
         <div className="movie-card fade-in" style={{ animationDelay: `${0.2 + (index * 0.05)}s` }}>
             <div className="movie-content">
@@ -18,7 +35,7 @@ const MovieCard = ({ movie, index }) => {
                         <svg xmlns="http://www.w3.org/2000/svg" className="detail-icon" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
                         </svg>
-                        <span>{formattedDate} at {formattedTime}</span>
+                        <span>{formattedDate} at {formattedTime} <span className="relative-time">{relativeTime}</span></span>
                     </div>
                     <div className="detail-row">
                         <svg xmlns="http://www.w3.org/2000/svg" className="detail-icon" viewBox="0 0 20 20" fill="currentColor">
