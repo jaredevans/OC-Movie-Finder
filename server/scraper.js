@@ -1,31 +1,170 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const https = require('https');
 puppeteer.use(StealthPlugin());
+
+require('dotenv').config();
 
 const db = require('./db');
 
+// AMC API Configuration
+const AMC_API_KEY = process.env.AMC_API_KEY;
+const AMC_API_HOST = 'api.amctheatres.com';
+
+// Attribute codes that indicate Open Caption or Subtitled movies
+const OC_SUBTITLE_ATTRIBUTES = [
+    'OPENCAPTION',
+    'NORWEGIANENGLISHSUBTITLE',
+    'PORTUGUESEENGLISHSUBTITLE',
+    'SPANISHENGLISHSUBTITLE',
+    'FRENCHENGLISHSUBTITLE',
+    'GERMANENGLISHSUBTITLE',
+    'ITALIANENGLISHSUBTITLE',
+    'JAPANESEENGLISHSUBTITLE',
+    'KOREANENGLISHSUBTITLE',
+    'CHINESEENGLISHSUBTITLE',
+    'HINDISUBTITLE',
+    'ENGLISHSUBTITLE',
+    'SUBTITLED'
+];
+
+// AMC API request helper
+function makeAMCAPIRequest(path) {
+    return new Promise((resolve, reject) => {
+        if (!AMC_API_KEY) {
+            reject(new Error('AMC_API_KEY not found in environment'));
+            return;
+        }
+
+        const options = {
+            hostname: AMC_API_HOST,
+            path: path,
+            method: 'GET',
+            headers: {
+                'X-AMC-Vendor-Key': AMC_API_KEY,
+                'Accept': 'application/json'
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let data = '';
+
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        reject(new Error(`Failed to parse JSON: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`API returned status ${res.statusCode}`));
+                }
+            });
+        });
+
+        req.on('error', (e) => {
+            reject(e);
+        });
+
+        req.end();
+    });
+}
+
+// Check if showtime has OC or subtitle attributes
+function isOCOrSubtitled(attributes) {
+    return attributes.some(attr => {
+        const code = (attr.code || '').toUpperCase();
+        const name = (attr.name || '').toLowerCase();
+
+        if (OC_SUBTITLE_ATTRIBUTES.includes(code)) return true;
+
+        if (name.includes('open caption') ||
+            name.includes('subtitle') ||
+            name.includes('english sub')) {
+            return true;
+        }
+
+        return false;
+    });
+}
+
+// Format date for AMC API (M-D-YY)
+function formatAMCDate(dateStr) {
+    const [year, month, day] = dateStr.split('-');
+    return `${parseInt(month)}-${parseInt(day)}-${year.slice(-2)}`;
+}
+
+// Scrape AMC theater using official API
+async function scrapeAMCTheater(theater, dates, onProgress) {
+    const results = [];
+
+    if (!AMC_API_KEY) {
+        console.log(`Skipping ${theater.name} - AMC_API_KEY not configured`);
+        return results;
+    }
+
+    console.log(`Fetching ${theater.name} via AMC API...`);
+    if (onProgress) {
+        onProgress({ type: 'theater', theater: theater.name, location: `${theater.city}, ${theater.state}` });
+    }
+
+    for (const dateStr of dates) {
+        const amcDate = formatAMCDate(dateStr);
+
+        if (onProgress) {
+            onProgress({ type: 'date', date: dateStr, theater: theater.name });
+        }
+
+        try {
+            const path = `/v2/theatres/${theater.amcId}/showtimes/${amcDate}?page-size=200`;
+            const data = await makeAMCAPIRequest(path);
+            const showtimes = data._embedded?.showtimes || [];
+
+            // Filter for OC/Subtitled showtimes
+            const ocShowtimes = showtimes.filter(st => isOCOrSubtitled(st.attributes || []));
+
+            console.log(`  ${dateStr}: Found ${ocShowtimes.length} OC/Subtitled showtimes`);
+
+            for (const st of ocShowtimes) {
+                // Parse ISO datetime from API
+                const showDateTime = st.showDateTimeLocal; // e.g., "2025-12-27T09:30:00"
+
+                results.push({
+                    title: st.movieName,
+                    showtime: showDateTime,
+                    url: st.purchaseUrl || theater.url,
+                    theater: theater
+                });
+
+                if (onProgress) {
+                    const time = new Date(showDateTime).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit'
+                    });
+                    onProgress({
+                        type: 'movie',
+                        title: st.movieName,
+                        showtime: time,
+                        theater: theater.name,
+                        date: dateStr
+                    });
+                }
+            }
+
+        } catch (error) {
+            console.error(`  Error fetching ${dateStr} for ${theater.name}:`, error.message);
+        }
+    }
+
+    return results;
+}
+
 async function scrapeMovies(onProgress = null) {
     console.log('Starting scrape...');
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-blink-features=AutomationControlled',
-            '--window-size=1920,1080'
-        ]
-    });
-    const page = await browser.newPage();
-
-    // Set a real User-Agent to avoid detection
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
-    await page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    });
-
-    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
 
     // Define theaters to scrape
     const theaters = [
@@ -35,7 +174,8 @@ async function scrapeMovies(onProgress = null) {
             city: 'Bethesda',
             state: 'MD',
             zip: '20817',
-            type: 'amc'
+            type: 'amc',
+            amcId: 348
         },
         {
             name: 'AMC Georgetown 14',
@@ -43,7 +183,8 @@ async function scrapeMovies(onProgress = null) {
             city: 'Washington',
             state: 'DC',
             zip: '20007',
-            type: 'amc'
+            type: 'amc',
+            amcId: 2654
         },
         {
             name: 'Regal Rockville Center',
@@ -77,7 +218,6 @@ async function scrapeMovies(onProgress = null) {
     for (let i = 0; i < 7; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
-        // Use local date string in YYYY-MM-DD format
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
@@ -98,52 +238,77 @@ async function scrapeMovies(onProgress = null) {
         });
         console.log("Cleared existing movies.");
 
-        for (const theater of theaters) {
-            console.log(`Scraping ${theater.name}...`);
-            if (onProgress) {
-                onProgress({ type: 'theater', theater: theater.name, location: `${theater.city}, ${theater.state}` });
-            }
+        // Separate AMC and Regal theaters
+        const amcTheaters = theaters.filter(t => t.type === 'amc');
+        const regalTheaters = theaters.filter(t => t.type === 'regal');
 
-            for (const dateStr of dates) {
-                let url;
-                let regalDate;
-                if (theater.type === 'regal') {
+        // Process AMC theaters via API (no browser needed)
+        for (const theater of amcTheaters) {
+            const movies = await scrapeAMCTheater(theater, dates, onProgress);
+
+            for (const movie of movies) {
+                await new Promise((resolve, reject) => {
+                    db.run(
+                        `INSERT INTO movies (title, theater_name, theater_city, theater_state, theater_zip, showtime, url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        [movie.title, movie.theater.name, movie.theater.city, movie.theater.state, movie.theater.zip, movie.showtime, movie.url],
+                        (err) => {
+                            if (err) console.error('Error inserting movie:', err);
+                            resolve();
+                        }
+                    );
+                });
+                totalAdded++;
+            }
+        }
+
+        // Process Regal theaters via Puppeteer (unchanged)
+        if (regalTheaters.length > 0) {
+            const browser = await puppeteer.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-blink-features=AutomationControlled',
+                    '--window-size=1920,1080'
+                ]
+            });
+            const page = await browser.newPage();
+
+            await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+
+            await page.setExtraHTTPHeaders({
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            });
+
+            page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
+            for (const theater of regalTheaters) {
+                console.log(`Scraping ${theater.name}...`);
+                if (onProgress) {
+                    onProgress({ type: 'theater', theater: theater.name, location: `${theater.city}, ${theater.state}` });
+                }
+
+                for (const dateStr of dates) {
                     // Regal uses MM-DD-YYYY
                     const [year, month, day] = dateStr.split('-');
-                    regalDate = `${month}-${day}-${year}`;
-                    url = `${theater.url}?date=${regalDate}`;
-                } else {
-                    // AMC uses YYYY-MM-DD
-                    url = `${theater.url}?date=${dateStr}`;
-                }
+                    const regalDate = `${month}-${day}-${year}`;
+                    const url = `${theater.url}?date=${regalDate}`;
 
-                console.log(`Scraping ${url}...`);
-                if (onProgress) {
-                    onProgress({ type: 'date', date: dateStr, theater: theater.name });
-                }
-
-                try {
-                    // Use domcontentloaded for both - Regal will use API, AMC still needs basic page load
-                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-                    if (theater.type === 'amc') {
-                        // AMC specific wait
-                        try {
-                            await page.waitForSelector('.ShowtimesByTheatre-film', { timeout: 5000 });
-                        } catch (e) {
-                            try {
-                                await page.waitForSelector('section[aria-label*="Showtimes for"]', { timeout: 5000 });
-                            } catch (e2) {
-                                console.log('No movie elements found on this page.');
-                            }
-                        }
+                    console.log(`Scraping ${url}...`);
+                    if (onProgress) {
+                        onProgress({ type: 'date', date: dateStr, theater: theater.name });
                     }
 
-                    const movies = await page.evaluate(async (pageUrl, theaterType, theaterCode, apiDate) => {
-                        const results = [];
+                    try {
+                        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-                        if (theaterType === 'regal') {
-                            // Regal API-based scraping
+                        const theaterCode = theater.url.match(/regal-[^-]+-(?:center-)?(\d+)/)?.[1] ||
+                            theater.url.match(/-(\d+)$/)?.[1] || '0336';
+
+                        const movies = await page.evaluate(async (pageUrl, theaterCode, apiDate) => {
+                            const results = [];
+
                             try {
                                 const apiUrl = `https://www.regmovies.com/api/getShowtimes?theatres=${theaterCode}&date=${apiDate}&hoCode=&ignoreCache=false&moviesOnly=false`;
                                 const response = await fetch(apiUrl);
@@ -161,7 +326,6 @@ async function scrapeMovies(onProgress = null) {
                                             if (movie.Performances) {
                                                 movie.Performances.forEach(perf => {
                                                     if (perf.PerformanceAttributes && perf.PerformanceAttributes.includes('OC')) {
-                                                        // Extract time from CalendarShowTime (e.g., "2025-11-29T09:15:00")
                                                         const timeMatch = perf.CalendarShowTime.match(/T(\d{2}):(\d{2})/);
                                                         if (timeMatch) {
                                                             let hours = parseInt(timeMatch[1], 10);
@@ -187,82 +351,56 @@ async function scrapeMovies(onProgress = null) {
                                 console.error('Error fetching Regal API:', e);
                             }
 
-                        } else {
-                            // AMC Scraping Logic
-                            const movieSections = document.querySelectorAll('section[aria-label*="Showtimes for"]');
+                            return results;
+                        }, url, theaterCode, regalDate);
 
-                            movieSections.forEach((section) => {
-                                const titleElement = section.querySelector('h1 a');
-                                if (!titleElement) return;
-                                const title = titleElement.innerText.trim();
+                        console.log(`Found ${movies.length} movies for ${dateStr} at ${theater.name}`);
 
-                                const ocListItems = section.querySelectorAll('li[role="listitem"][aria-label*="Open Caption"]');
+                        for (const movie of movies) {
+                            const timeMatch = movie.showtime.match(/(\d{1,2}):(\d{2})([ap]m)/i);
+                            if (timeMatch) {
+                                let [_, hours, minutes, modifier] = timeMatch;
+                                hours = parseInt(hours, 10);
+                                if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
+                                if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
 
-                                ocListItems.forEach((item) => {
-                                    const showtimeLinks = item.querySelectorAll('a[href*="/showtimes/"]');
-                                    showtimeLinks.forEach((link) => {
-                                        const timeText = link.innerText.trim();
-                                        results.push({
-                                            title,
-                                            showtime: timeText,
-                                            url: pageUrl
-                                        });
+                                const isoDateTime = `${dateStr}T${hours.toString().padStart(2, '0')}:${minutes}:00`;
+
+                                await new Promise((resolve, reject) => {
+                                    db.run(
+                                        `INSERT INTO movies (title, theater_name, theater_city, theater_state, theater_zip, showtime, url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                                        [movie.title, theater.name, theater.city, theater.state, theater.zip, isoDateTime, movie.url],
+                                        (err) => {
+                                            if (err) console.error('Error inserting movie:', err);
+                                            resolve();
+                                        }
+                                    );
+                                });
+                                totalAdded++;
+
+                                if (onProgress) {
+                                    onProgress({
+                                        type: 'movie',
+                                        title: movie.title,
+                                        showtime: movie.showtime,
+                                        theater: theater.name,
+                                        date: dateStr
                                     });
-                                });
-                            });
-                        }
-
-                        return results;
-                    }, url, theater.type, theater.url.match(/regal-[^-]+-center-(\d+)/)?.[1] || '0336', regalDate);
-
-                    console.log(`Found ${movies.length} movies for ${dateStr} at ${theater.name}`);
-
-                    for (const movie of movies) {
-                        // Convert time to ISO
-                        const timeMatch = movie.showtime.match(/(\d{1,2}):(\d{2})([ap]m)/i);
-                        if (timeMatch) {
-                            let [_, hours, minutes, modifier] = timeMatch;
-                            hours = parseInt(hours, 10);
-                            if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
-                            if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
-
-                            const isoDateTime = `${dateStr}T${hours.toString().padStart(2, '0')}:${minutes}:00`;
-
-                            // Insert into DB
-                            await new Promise((resolve, reject) => {
-                                db.run(
-                                    `INSERT INTO movies (title, theater_name, theater_city, theater_state, theater_zip, showtime, url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                                    [movie.title, theater.name, theater.city, theater.state, theater.zip, isoDateTime, movie.url],
-                                    (err) => {
-                                        if (err) console.error('Error inserting movie:', err);
-                                        resolve();
-                                    }
-                                );
-                            });
-                            totalAdded++;
-
-                            // Emit progress event for each movie found
-                            if (onProgress) {
-                                onProgress({
-                                    type: 'movie',
-                                    title: movie.title,
-                                    showtime: movie.showtime,
-                                    theater: theater.name,
-                                    date: dateStr
-                                });
+                                }
                             }
                         }
-                    }
 
-                } catch (error) {
-                    console.error(`Error scraping ${url}:`, error);
+                    } catch (error) {
+                        console.error(`Error scraping ${url}:`, error);
+                    }
                 }
             }
+
+            await browser.close();
         }
+
     } catch (error) {
         console.error('Scraping failed:', error);
-    } finally {
-        await browser.close();
     }
 
     return totalAdded;
