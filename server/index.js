@@ -45,6 +45,16 @@ app.get('/api/movies', (req, res) => {
     });
 });
 
+app.get('/api/date-range', (req, res) => {
+    db.get("SELECT MIN(showtime) as min_date, MAX(showtime) as max_date FROM movies", (err, row) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+        res.json(row);
+    });
+});
+
 app.get('/api/scrape', async (req, res) => {
     // Set headers for Server-Sent Events
     res.setHeader('Content-Type', 'text/event-stream');

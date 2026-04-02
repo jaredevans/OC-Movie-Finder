@@ -71,10 +71,27 @@ function Home() {
 function AppContent() {
   const location = useLocation();
   const [searchClickCount, setSearchClickCount] = useState(0);
+  const [dateRange, setDateRange] = useState('');
 
   const handleSearchClick = () => {
     setSearchClickCount(prev => prev + 1);
   };
+
+  useEffect(() => {
+    const fetchDateRange = async () => {
+      try {
+        const response = await fetch('/ocmovies/api/date-range');
+        const data = await response.json();
+        if (data.min_date && data.max_date) {
+          const fmt = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          setDateRange(`${fmt(data.min_date)} – ${fmt(data.max_date)}`);
+        }
+      } catch (err) {
+        // silently fail
+      }
+    };
+    fetchDateRange();
+  }, []);
 
   const isUpdateEnabled = searchClickCount >= 3;
 
@@ -85,6 +102,7 @@ function AppContent() {
           <div className="title-section">
             <h1>OC Movie Finder</h1>
             <p className="subtitle">Find Open Caption screenings near you</p>
+            {dateRange && <p className="date-range">{dateRange}</p>}
           </div>
           <nav className="main-nav">
             <Link
