@@ -281,7 +281,11 @@ async function scrapeMovies(onProgress = null) {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             });
 
-            page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+            page.on('console', msg => {
+                const text = msg.text();
+                if (!text.includes('violates') && !text.includes('ERR_FAILED') && !text.includes('CORS') && !text.includes('JSHandle') && !text.includes('font-size:0') && !text.includes('console.group') && !text.includes('Access Token') && !text.includes('403'))
+                    console.log('PAGE LOG:', text);
+            });
 
             for (const theater of regalTheaters) {
                 console.log(`Scraping ${theater.name}...`);
