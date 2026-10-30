@@ -2,24 +2,43 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import SearchBar from './components/SearchBar';
 import MovieCard from './components/MovieCard';
+import Sidebar from './components/Sidebar';
 import UpdatePage from './pages/UpdatePage';
 import './App.css';
 
 function Home() {
   const [movies, setMovies] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTitle, setSelectedTitle] = useState(null);
+  const [selectedTheater, setSelectedTheater] = useState(null);
+  const [filters, setFilters] = useState({ titles: [], theaters: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchFilters = async () => {
+      try {
+        const response = await fetch('/ocmovies/api/filters');
+        const data = await response.json();
+        setFilters({ titles: data.titles || [], theaters: data.theaters || [] });
+      } catch {
+        // silently fail
+      }
+    };
+    fetchFilters();
+  }, []);
 
   useEffect(() => {
     const fetchMovies = async () => {
       setLoading(true);
       setError(null);
       try {
-        const apiBase = '/ocmovies/api';
-        const url = searchTerm
-          ? `${apiBase}/movies?q=${encodeURIComponent(searchTerm)}`
-          : `${apiBase}/movies`;
+        const params = new URLSearchParams();
+        if (searchTerm) params.set('q', searchTerm);
+        if (selectedTitle) params.set('title', selectedTitle);
+        if (selectedTheater) params.set('theater', selectedTheater);
+        const query = params.toString();
+        const url = `/ocmovies/api/movies${query ? `?${query}` : ''}`;
 
         const response = await fetch(url);
         if (!response.ok) {
@@ -39,31 +58,55 @@ function Home() {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchTerm]);
+  }, [searchTerm, selectedTitle, selectedTheater]);
+
+  // Typing a new search replaces any movie picked from the sidebar
+  const handleSearchChange = (value) => {
+    setSearchTerm(value);
+    setSelectedTitle(null);
+  };
+
+  const handleSelectTitle = (title) => {
+    setSelectedTitle(title);
+    setSearchTerm('');
+  };
 
   return (
-    <main>
-      <SearchBar value={searchTerm} onChange={setSearchTerm} />
+    <main className="home-layout">
+      <div className="home-search">
+        <SearchBar value={searchTerm} onChange={handleSearchChange} />
+      </div>
 
-      {error && <div className="error-message">{error}</div>}
+      <Sidebar
+        titles={filters.titles}
+        theaters={filters.theaters}
+        selectedTitle={selectedTitle}
+        selectedTheater={selectedTheater}
+        onSelectTitle={handleSelectTitle}
+        onSelectTheater={setSelectedTheater}
+      />
 
-      {loading ? (
-        <div className="loading-container">
-          <div className="spinner"></div>
-        </div>
-      ) : (
-        <div className="movie-grid">
-          {movies.length > 0 ? (
-            movies.map((movie, index) => (
-              <MovieCard key={movie.id} movie={movie} index={index} />
-            ))
-          ) : (
-            <div className="no-results fade-in">
-              <p>No movies found matching your search.</p>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="home-results">
+        {error && <div className="error-message">{error}</div>}
+
+        {loading ? (
+          <div className="loading-container">
+            <div className="spinner"></div>
+          </div>
+        ) : (
+          <div className="movie-grid">
+            {movies.length > 0 ? (
+              movies.map((movie, index) => (
+                <MovieCard key={movie.id} movie={movie} index={index} />
+              ))
+            ) : (
+              <div className="no-results fade-in">
+                <p>No movies found matching your search.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

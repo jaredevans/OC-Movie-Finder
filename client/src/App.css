@@ -123,3 +123,43 @@
   color: rgba(255, 255, 255, 0.4);
   font-size: 1.1rem;
 }
+.home-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-areas:
+    "search sidebar"
+    "results sidebar";
+  grid-template-rows: auto 1fr;
+  column-gap: 2rem;
+  align-items: start;
+}
+
+.home-search {
+  grid-area: search;
+}
+
+.home-layout .sidebar {
+  grid-area: sidebar;
+}
+
+.home-results {
+  grid-area: results;
+}
+
+.home-search .search-container {
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .home-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "search"
+      "sidebar"
+      "results";
+  }
+
+  .home-layout .sidebar {
+    margin-bottom: 1.5rem;
+  }
+}

@@ -11,10 +11,14 @@ app.use(express.json());
 // Search endpoint
 const scrapeMovies = require('./scraper');
 
+// Strip the "(Open Cap/ Eng Sub)" suffix some theaters add, so variants group together
+const baseTitle = (title) => title.replace(/\s*\(Open Cap[^)]*\)\s*$/i, '').trim();
+
 app.get('/api/movies', (req, res) => {
-    const { q } = req.query;
+    const { q, title, theater } = req.query;
     let sql = "SELECT * FROM movies";
-    let params = [];
+    const conditions = [];
+    const params = [];
 
     if (q) {
         // Split search query by spaces
@@ -22,15 +26,31 @@ app.get('/api/movies', (req, res) => {
         const firstWord = searchTerms[0];
         const secondWord = searchTerms[1];
 
-        if (firstWord && secondWord) {
-            // First word = movie title, second word = city
-            sql += " WHERE title LIKE ? AND theater_city LIKE ?";
-            params = [`%${firstWord}%`, `%${secondWord}%`];
-        } else if (firstWord) {
-            // Only first word provided = search movie title only
-            sql += " WHERE title LIKE ?";
-            params = [`%${firstWord}%`];
+        if (firstWord) {
+            // First word = movie title
+            conditions.push("title LIKE ?");
+            params.push(`%${firstWord}%`);
         }
+        if (secondWord) {
+            // Second word = city
+            conditions.push("theater_city LIKE ?");
+            params.push(`%${secondWord}%`);
+        }
+    }
+
+    if (title) {
+        // Exact base title, including its open caption variants
+        conditions.push("(title = ? OR title LIKE ?)");
+        params.push(title, `${title} (Open Cap%`);
+    }
+
+    if (theater) {
+        conditions.push("theater_name = ?");
+        params.push(theater);
+    }
+
+    if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ");
     }
 
     // Order by date
@@ -42,6 +62,38 @@ app.get('/api/movies', (req, res) => {
             return;
         }
         res.json({ data: rows });
+    });
+});
+
+app.get('/api/filters', (req, res) => {
+    db.all("SELECT title, theater_name, theater_city FROM movies", (err, rows) => {
+        if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+        }
+
+        const titleCounts = new Map();
+        const theaters = new Map();
+        for (const row of rows) {
+            const t = baseTitle(row.title);
+            titleCounts.set(t, (titleCounts.get(t) || 0) + 1);
+
+            const existing = theaters.get(row.theater_name);
+            if (existing) {
+                existing.count++;
+            } else {
+                theaters.set(row.theater_name, { name: row.theater_name, city: row.theater_city, count: 1 });
+            }
+        }
+
+        const titles = [...titleCounts]
+            .map(([title, count]) => ({ title, count }))
+            .sort((a, b) => a.title.localeCompare(b.title));
+
+        res.json({
+            titles,
+            theaters: [...theaters.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        });
     });
 });
 
